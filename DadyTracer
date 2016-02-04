@@ -1,0 +1,137 @@
+from scapy.all import *
+dns_ip = {}
+ip_dns = {}
+previd =0 # dette er for SmellyDns
+
+previd =0 # Stuff for den dere HttpParse
+prev_header = ''
+prev_ack = 0
+prev_body = ''
+def http_parse(pkt):
+    global prev_ack, prev_body,prev_header,ip_dns
+    post_found = 0
+    if pkt.haslayer(Raw):
+        load = repr(pkt[Raw].load)[1:-1]# fjerner dubble quotes 
+        try:
+            headers, body = load.split(r"\r\n\r\n", 1)# deller opp ting     
+        except:
+            headers = load
+            body = ''
+        ack = pkt[TCP].ack
+        if prev_ack == ack:
+            newBody = prev_body+body
+            prev_body = newBody
+            body = prev_body
+            
+            newheader = prev_header + headers
+            prev_header  =  newheader
+            headers = prev_header
+            
+            return
+        else:
+            prev_body = ""
+            prev_header = ""
+        header_lines = headers.split(r"\r\n")
+        for head in header_lines:
+            if "get /" in head.lower():
+                print "By: %s\nTo: %s" % (pkt[IP].src,pkt[IP].dst)
+                check_ip(pkt[IP].dst)
+                print "GET",
+                url = head.split()[1]
+                try: 
+                    url,place = url.split("?")
+                    try:
+                        elements = place.split("&")
+                    except:
+                        pass
+                except:
+                    pass
+                print "url: %s" %url
+                try:
+                    if place: 
+                        if elements:
+                            for e in elements:
+                                print e
+                        else:
+                            print place     
+                except:
+                    pass
+            elif "post /" in head.lower():
+                print "By: %s\nTo: %s" % (pkt[IP].src,pkt[IP].dst)
+                check_ip(pkt[IP].dst)
+
+                url = head.split()[1]
+                print "post to url %s value %s" %(url,body)
+            elif "host:" in head.lower():
+                print "Host header value",
+                print head.split()[1]
+                print "\n"
+            elif "cookie" in head.lower():
+                print "cookies"
+                cookies = head.split(r":")[1]
+                try:
+                    for cookie in cookies.split(r";"):
+                        print cookie
+                        print "\n"
+                except:
+                    print cookies
+            elif "referer" in head.lower():
+                print "Referer",
+                print head.split(r":")[1]
+        
+        
+        prev_body = body
+        prev_header = headers
+        prev_ack = ack
+def dns_parse(pkt):
+	global dns_ip,previd,ip_dns
+	if pkt.haslayer(DNS):
+		idofpkt = pkt[DNS].id
+		
+		if pkt[DNS].qr == 0: # Dette er da sporsmaal flag 
+			dns_ip[idofpkt] = [pkt[IP].src,pkt[DNS].qd.qname]
+		
+			
+		
+		elif pkt[DNS].qr == 1:
+			
+			try:
+				a = dns_ip[idofpkt]
+			
+				if pkt[DNS].an == None:
+				
+					#print "no response to packet with id %s" %idofpkt
+					#print "requested by %s wondring about %s\n" % (a[0],a[1])
+					del dns_ip[idofpkt]
+				else:
+					print "response to query by id",idofpkt 
+					print "requested by %s wondring about %s ip of thingy is %s\n" % (a[0],a[1],pkt[DNS].an.rdata)
+					ip = pkt[DNS].an.rdata
+					ip_dns[ip] = a[1] 	
+					del dns_ip[idofpkt]
+			except:
+				if previd == idofpkt:
+					pass
+				else:
+					print "invalid dns id reported"
+					print "Destination name server "+pkt[IP].dst
+					print "Source request "+pkt[IP].src
+					print "request id\n",idofpkt
+
+			previd = idofpkt
+def pkt_idf(pkt):
+	if pkt.haslayer(TCP):
+		if pkt.haslayer(Raw):
+			http_parse(pkt)
+	elif pkt.haslayer(UDP):
+		if pkt.haslayer(DNS):
+			dns_parse(pkt)
+	else:
+		print "neither UDP OR TCP"
+def check_ip(ip):
+	try:    
+		print "seen in past dns record %s"%ip_dns[ip]
+    except:
+       	print "DIRECT IP NO LOOK UP"
+
+sniff(filter='', iface='lo', store=0, prn=pkt_idf)
