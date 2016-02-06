@@ -1,4 +1,5 @@
 from scapy.all import *
+import argparse
 dns_ip = {}
 ip_dns = {}
 previd =0 # dette er for SmellyDns
@@ -72,7 +73,6 @@ def http_parse(pkt):
                 try:
                     for cookie in cookies.split(r";"):
                         print cookie
-                        print "\n"
                 except:
                     print cookies
             elif "referer" in head.lower():
@@ -127,11 +127,35 @@ def pkt_idf(pkt):
 		if pkt.haslayer(DNS):
 			dns_parse(pkt)
 	else:
-		print "neither UDP OR TCP"
+		pass#print "neither UDP OR TCP"
 def check_ip(ip):
 	try:    
 		print "seen in past dns record %s"%ip_dns[ip]
-    except:
-       	print "DIRECT IP NO LOOK UP"
+	except:
+		print "DIRECT IP NO LOOK UP"
+def sniffer(interface):
+    try:
+        sniff(filter='', iface=interface, store=0, prn=pkt_idf)
+    except Exception as error:
+        print "%s" % error 
+        exit(0)
+def reader(filename):
+    try:
+        dump = rdpcap(filename)
+    except Exception as error:
+        print "%s" % error
+        exit(0)
+    for pkt in dump:
+        check_ip(pkt)
 
-sniff(filter='', iface='lo', store=0, prn=pkt_idf)
+parser = argparse.ArgumentParser()
+parser.add_argument("-i","--interface", help="Interface to sniff on", required=False,default=False)
+parser.add_argument("-f","--file",help="pcap to read from",required=False,default=False)
+args = parser.parse_args()
+if args.interface:
+    sniffer(args.interface)
+elif args.file:
+    reader(args.file)
+else:
+    print "No arguments"
+    print "do %s -h for help" %sys.argv[0]
