@@ -146,7 +146,7 @@ def reader(filename):
         print "%s" % error
         exit(0)
     for pkt in dump:
-        check_ip(pkt)
+        pkt_idf(pkt)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-i","--interface", help="Interface to sniff on", required=False,default=False)
